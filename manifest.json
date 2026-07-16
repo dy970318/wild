@@ -1,7 +1,7 @@
 {
     "display_name": "狂野术士测试",
-    "version": "3.0.0",
+    "version": "4.0.0",
     "main": "index.js",
     "type": "extension",
-    "requires": []
+    "description": "极简测试扩展"
 }
