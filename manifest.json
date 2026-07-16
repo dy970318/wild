@@ -1,6 +1,7 @@
 {
     "display_name": "狂野术士跑团助手",
     "version": "1.0.0",
+    "main":"index.js",
     "description": "内置骰子 + 自创D100狂野魔法浪涌表，带悬浮球",
     "author": "Freya",
     "tags": ["dice", "wildmagic", "跑团"],
