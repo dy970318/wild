@@ -1,6 +1,6 @@
 {
     "display_name": "终端测试",
-    "version": "5.0.0",
-    "main": "index.js",
+    "version": "5.0.1",
+    "scripts": ["index.js"],
     "type": "extension"
 }
