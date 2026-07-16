@@ -1,4 +1,4 @@
-// ================= 狂野魔法浪涌表（共100条） =================
+// ================= 狂野魔法浪涌表（共100条，完整保留） =================
 const surgeTable = [
     '施法者以3环法术效应施展火球术，并且以施法者自身为爆发中心。',
     '施法者以5环法术效应施展7枚魔法飞弹 。',
@@ -102,16 +102,16 @@ const surgeTable = [
     '一块馅饼从天而降砸在施法目标脸上。'
 ];
 
-// ================= 插件核心逻辑 =================
-(function () {
-    // 获取SillyTavern上下文
-    const context = SillyTavern.getContext();
+// ================= 插件核心逻辑（修复版：等待ST加载 + 修复d100错误） =================
+(function() {
+    console.log('🎲 狂野术士助手：开始加载...');
 
-    // ----- 掷骰子函数（支持 d4, 2d6, 1d20 等格式） -----
+    // ----- 掷骰子函数（修复：正确处理 d100） -----
     function rollDice(notation) {
         notation = notation.trim().toLowerCase();
         let count = 1,
             sides = 0;
+        // 处理 "d6", "d100" 等
         if (notation.startsWith('d')) {
             sides = parseInt(notation.substring(1), 10);
         } else if (notation.includes('d')) {
@@ -134,206 +134,211 @@ const surgeTable = [
         return { total: total, detail: rolls.join(' + ') + ' = ' + total };
     }
 
-    // ----- 显示消息（用toast气泡，不干扰正文） -----
+    // ----- 显示消息（用SillyTavern的气泡） -----
     function showMessage(msg) {
-        context.toast(msg, { type: 'info', timeout: 8000 });
+        try {
+            const ctx = SillyTavern.getContext();
+            ctx.toast(msg, { type: 'info', timeout: 8000 });
+        } catch(e) {
+            // 如果ST上下文还没好，降级用浏览器弹窗（但一般不会）
+            alert(msg);
+        }
     }
 
     // ----- 施法检定（核心功能） -----
     function doWildSurgeCheck() {
-        // 掷1d20
         const d20Result = rollDice('1d20');
         if (d20Result.total !== 1) {
             showMessage('🧙 施法检定 1d20 = ' + d20Result.total + '，未触发狂野魔法浪涌。');
             return;
         }
-        // 触发浪涌，掷1d100
-        const d100Result = rollDice('1d100');
-        const index = d100Result.total - 1; // 数组从0开始
-        const surgeEffect = surgeTable[index] || '（未找到对应条目，请检查表）';
+        const d100Result = rollDice('1d100'); // 现在正确解析为1d100
+        const index = d100Result.total - 1;
+        const surgeEffect = surgeTable[index] || '（未找到对应条目）';
         showMessage('✨ 狂野魔法浪涌触发！1d100 = ' + d100Result.total + '\n效果：' + surgeEffect);
     }
 
     // ========== 创建UI（悬浮球 + 菜单） ==========
-    // 1. 创建悬浮球容器
-    const container = document.createElement('div');
-    container.id = 'wild-magic-helper';
-    container.style.cssText = `
-            position: fixed;
-            bottom: 100px;
-            right: 20px;
-            z-index: 9999;
-            font-family: sans-serif;
-            user-select: none;
-        `;
+    function buildUI() {
+        // 防止重复创建
+        if (document.getElementById('wild-magic-helper')) {
+            console.log('⚠️ 悬浮球已存在，跳过创建');
+            return;
+        }
 
-    // 2. 悬浮球按钮
-    const ball = document.createElement('div');
-    ball.id = 'wm-ball';
-    ball.textContent = '🎲';
-    ball.style.cssText = `
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background: #2b2d42;
-            color: white;
-            font-size: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-            transition: 0.2s;
-            border: 2px solid #8d99ae;
-        `;
-    ball.onmouseover = () => { ball.style.transform = 'scale(1.08)'; };
-    ball.onmouseout = () => { ball.style.transform = 'scale(1)'; };
-
-    // 3. 菜单面板（初始隐藏）
-    const panel = document.createElement('div');
-    panel.id = 'wm-panel';
-    panel.style.cssText = `
-            position: absolute;
-            bottom: 70px;
-            right: 0;
-            background: #1e1e2e;
-            color: #cdd6f4;
-            padding: 16px 18px;
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.8);
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-            min-width: 200px;
-            border: 1px solid #45475a;
-            font-size: 14px;
-            max-height: 400px;
-            overflow-y: auto;
-        `;
-
-    // ---- 菜单内容 ----
-    // 标题
-    const title = document.createElement('div');
-    title.textContent = '🎲 狂野术士工具';
-    title.style.cssText = 'font-weight: bold; font-size: 16px; text-align: center; border-bottom: 1px solid #45475a; padding-bottom: 6px;';
-
-    // 常规骰子按钮行
-    const diceRow = document.createElement('div');
-    diceRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;';
-    const diceTypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
-    diceTypes.forEach(d => {
-        const btn = document.createElement('button');
-        btn.textContent = d;
-        btn.style.cssText = `
-                background: #313244; border: none; color: white;
-                padding: 4px 10px; border-radius: 8px; cursor: pointer;
-                font-size: 13px;
+        const container = document.createElement('div');
+        container.id = 'wild-magic-helper';
+        container.style.cssText = `
+                position: fixed;
+                bottom: 100px;
+                right: 20px;
+                z-index: 9999;
+                font-family: sans-serif;
+                user-select: none;
             `;
-        btn.onmouseover = () => { btn.style.background = '#45475a'; };
-        btn.onmouseout = () => { btn.style.background = '#313244'; };
-        btn.onclick = () => {
-            const res = rollDice('1' + d.substring(1)); // 把d4变成1d4
-            showMessage('🎲 ' + d + ' 掷骰结果：' + res.detail);
+
+        // 悬浮球
+        const ball = document.createElement('div');
+        ball.id = 'wm-ball';
+        ball.textContent = '🎲';
+        ball.style.cssText = `
+                width: 56px; height: 56px; border-radius: 50%;
+                background: #2b2d42; color: white; font-size: 28px;
+                display: flex; align-items: center; justify-content: center;
+                cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+                transition: 0.2s; border: 2px solid #8d99ae;
+            `;
+        ball.onmouseover = () => { ball.style.transform = 'scale(1.08)'; };
+        ball.onmouseout = () => { ball.style.transform = 'scale(1)'; };
+
+        // 菜单面板
+        const panel = document.createElement('div');
+        panel.id = 'wm-panel';
+        panel.style.cssText = `
+                position: absolute; bottom: 70px; right: 0;
+                background: #1e1e2e; color: #cdd6f4;
+                padding: 16px 18px; border-radius: 16px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+                display: none; flex-direction: column; gap: 10px;
+                min-width: 200px; border: 1px solid #45475a;
+                font-size: 14px; max-height: 400px; overflow-y: auto;
+            `;
+
+        // 标题
+        const title = document.createElement('div');
+        title.textContent = '🎲 狂野术士工具';
+        title.style.cssText = 'font-weight: bold; font-size: 16px; text-align: center; border-bottom: 1px solid #45475a; padding-bottom: 6px;';
+
+        // 骰子按钮行（修复：直接传 '1d4' 而不是 '1d4' 拼接错误）
+        const diceRow = document.createElement('div');
+        diceRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;';
+        const diceTypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+        diceTypes.forEach(d => {
+            const btn = document.createElement('button');
+            btn.textContent = d;
+            btn.style.cssText = `
+                    background: #313244; border: none; color: white;
+                    padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: 13px;
+                `;
+            btn.onmouseover = () => { btn.style.background = '#45475a'; };
+            btn.onmouseout = () => { btn.style.background = '#313244'; };
+            // 关键修复：直接拼接 "1" + "d100" = "1d100"
+            btn.onclick = () => {
+                const res = rollDice('1' + d);
+                showMessage('🎲 ' + d + ' 掷骰结果：' + res.detail);
+            };
+            diceRow.appendChild(btn);
+        });
+
+        // 自定义输入
+        const customRow = document.createElement('div');
+        customRow.style.cssText = 'display: flex; gap: 6px; align-items: center; justify-content: center;';
+        const inputNd = document.createElement('input');
+        inputNd.type = 'text';
+        inputNd.placeholder = '如 3d6';
+        inputNd.style.cssText = `
+                background: #313244; border: 1px solid #45475a; color: white;
+                border-radius: 8px; padding: 4px 8px; width: 80px;
+            `;
+        const customBtn = document.createElement('button');
+        customBtn.textContent = '掷';
+        customBtn.style.cssText = `
+                background: #89b4fa; border: none; color: #1e1e2e;
+                padding: 4px 14px; border-radius: 8px; cursor: pointer; font-weight: bold;
+            `;
+        customBtn.onmouseover = () => { customBtn.style.background = '#74c7ec'; };
+        customBtn.onmouseout = () => { customBtn.style.background = '#89b4fa'; };
+        customBtn.onclick = () => {
+            const val = inputNd.value.trim();
+            if (!val) { showMessage('请输入骰子格式，例如 2d8'); return; }
+            const res = rollDice(val);
+            if (res.detail === '格式错误' || res.detail === '无效骰子') {
+                showMessage('❌ 格式错误，请输入如 3d6 或 d20');
+            } else {
+                showMessage('🎲 ' + val + ' 掷骰结果：' + res.detail);
+            }
         };
-        diceRow.appendChild(btn);
-    });
+        customRow.appendChild(inputNd);
+        customRow.appendChild(customBtn);
 
-    // 自定义 ndn 输入
-    const customRow = document.createElement('div');
-    customRow.style.cssText = 'display: flex; gap: 6px; align-items: center; justify-content: center;';
-    const inputNd = document.createElement('input');
-    inputNd.type = 'text';
-    inputNd.placeholder = '如 3d6';
-    inputNd.style.cssText = `
-            background: #313244; border: 1px solid #45475a; color: white;
-            border-radius: 8px; padding: 4px 8px; width: 80px;
-        `;
-    const customBtn = document.createElement('button');
-    customBtn.textContent = '掷';
-    customBtn.style.cssText = `
-            background: #89b4fa; border: none; color: #1e1e2e;
-            padding: 4px 14px; border-radius: 8px; cursor: pointer; font-weight: bold;
-        `;
-    customBtn.onmouseover = () => { customBtn.style.background = '#74c7ec'; };
-    customBtn.onmouseout = () => { customBtn.style.background = '#89b4fa'; };
-    customBtn.onclick = () => {
-        const val = inputNd.value.trim();
-        if (!val) { showMessage('请输入骰子格式，例如 2d8'); return; }
-        const res = rollDice(val);
-        if (res.detail === '格式错误' || res.detail === '无效骰子') {
-            showMessage('❌ 格式错误，请输入如 3d6 或 d20');
+        const hr = document.createElement('hr');
+        hr.style.cssText = 'border-color: #45475a; width: 100%;';
+
+        const surgeBtn = document.createElement('button');
+        surgeBtn.textContent = '⚡ 施法检定 (自动判定浪涌)';
+        surgeBtn.style.cssText = `
+                background: #f38ba8; border: none; color: #1e1e2e;
+                padding: 8px 12px; border-radius: 10px; cursor: pointer;
+                font-weight: bold; font-size: 15px;
+            `;
+        surgeBtn.onmouseover = () => { surgeBtn.style.background = '#eba0ac'; };
+        surgeBtn.onmouseout = () => { surgeBtn.style.background = '#f38ba8'; };
+        surgeBtn.onclick = doWildSurgeCheck;
+
+        panel.appendChild(title);
+        panel.appendChild(diceRow);
+        panel.appendChild(customRow);
+        panel.appendChild(hr);
+        panel.appendChild(surgeBtn);
+
+        let isPanelOpen = false;
+        ball.onclick = (e) => {
+            e.stopPropagation();
+            isPanelOpen = !isPanelOpen;
+            panel.style.display = isPanelOpen ? 'flex' : 'none';
+        };
+
+        container.appendChild(ball);
+        container.appendChild(panel);
+        document.body.appendChild(container);
+
+        // 拖拽功能
+        let isDragging = false;
+        let offsetX, offsetY;
+        ball.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            const rect = container.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            ball.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            let x = e.clientX - offsetX;
+            let y = e.clientY - offsetY;
+            x = Math.max(0, Math.min(window.innerWidth - 70, x));
+            y = Math.max(0, Math.min(window.innerHeight - 70, y));
+            container.style.left = x + 'px';
+            container.style.top = y + 'px';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+        });
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                ball.style.cursor = 'pointer';
+            }
+        });
+
+        console.log('✅ 狂野术士跑团助手 UI 已成功注入！');
+    }
+
+    // ========== 等待SillyTavern上下文加载 ==========
+    function waitForSTAndInit() {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            console.log('✅ 检测到 SillyTavern 上下文，开始构建 UI...');
+            buildUI();
         } else {
-            showMessage('🎲 ' + val + ' 掷骰结果：' + res.detail);
+            console.log('⏳ 未检测到 SillyTavern，500ms 后重试...');
+            setTimeout(waitForSTAndInit, 500);
         }
-    };
-    customRow.appendChild(inputNd);
-    customRow.appendChild(customBtn);
+    }
 
-    // 分割线
-    const hr = document.createElement('hr');
-    hr.style.cssText = 'border-color: #45475a; width: 100%;';
-
-    // 施法检定按钮（核心）
-    const surgeBtn = document.createElement('button');
-    surgeBtn.textContent = '⚡ 施法检定 (自动判定浪涌)';
-    surgeBtn.style.cssText = `
-            background: #f38ba8; border: none; color: #1e1e2e;
-            padding: 8px 12px; border-radius: 10px; cursor: pointer;
-            font-weight: bold; font-size: 15px;
-        `;
-    surgeBtn.onmouseover = () => { surgeBtn.style.background = '#eba0ac'; };
-    surgeBtn.onmouseout = () => { surgeBtn.style.background = '#f38ba8'; };
-    surgeBtn.onclick = doWildSurgeCheck;
-
-    // 组装面板
-    panel.appendChild(title);
-    panel.appendChild(diceRow);
-    panel.appendChild(customRow);
-    panel.appendChild(hr);
-    panel.appendChild(surgeBtn);
-
-    // 点击悬浮球切换面板显示
-    let isPanelOpen = false;
-    ball.onclick = () => {
-        isPanelOpen = !isPanelOpen;
-        panel.style.display = isPanelOpen ? 'flex' : 'none';
-    };
-
-    // 将元素添加到容器
-    container.appendChild(ball);
-    container.appendChild(panel);
-    document.body.appendChild(container);
-
-    // 拖拽悬浮球功能（用鼠标拖动）
-    let isDragging = false;
-    let offsetX, offsetY;
-    ball.addEventListener('mousedown', (e) => {
-        // 如果点击的是球本身，且不是点击菜单内部，允许拖动
-        isDragging = true;
-        const rect = container.getBoundingClientRect();
-        offsetX = e.clientX - rect.left;
-        offsetY = e.clientY - rect.top;
-        ball.style.cursor = 'grabbing';
-        e.preventDefault();
-    });
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        let x = e.clientX - offsetX;
-        let y = e.clientY - offsetY;
-        // 限制不跑出屏幕太远
-        x = Math.max(0, Math.min(window.innerWidth - 70, x));
-        y = Math.max(0, Math.min(window.innerHeight - 70, y));
-        container.style.left = x + 'px';
-        container.style.top = y + 'px';
-        container.style.right = 'auto';
-        container.style.bottom = 'auto';
-    });
-    document.addEventListener('mouseup', () => {
-        if (isDragging) {
-            isDragging = false;
-            ball.style.cursor = 'pointer';
-        }
-    });
-
-    console.log('✅ 狂野术士跑团助手已加载！');
+    // 启动加载
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', waitForSTAndInit);
+    } else {
+        waitForSTAndInit();
+    }
 })();
