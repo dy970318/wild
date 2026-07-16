@@ -1,7 +1,6 @@
 {
-    "display_name": "狂野术士测试",
-    "version": "4.0.0",
+    "display_name": "终端测试",
+    "version": "5.0.0",
     "main": "index.js",
-    "type": "extension",
-    "description": "极简测试扩展"
+    "type": "extension"
 }
